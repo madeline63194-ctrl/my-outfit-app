@@ -1,0 +1,301 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>今日の服決めるアプリ</title>
+  <style>
+    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Hiragino Sans", sans-serif; }
+    body { margin: 0; background: #f5f5f7; color: #1d1d1f; display: flex; justify-content: center; min-height: 100vh; }
+    .app { width: 100%; max-width: 440px; background: #ffffff; min-height: 100vh; display: flex; flex-direction: column; box-shadow: 0 0 24px rgba(0,0,0,0.06); }
+    header { padding: 16px 20px; background: #ff7a00; color: #fff; font-weight: 700; font-size: 18px; display: flex; justify-content: space-between; align-items: center; }
+    .content { flex: 1; padding: 16px; padding-bottom: 84px; overflow-y: auto; }
+    .card { background: #fafafa; border: 1px solid #ececef; border-radius: 14px; padding: 14px; margin-bottom: 14px; }
+    .card-title { font-size: 14px; font-weight: 700; margin-bottom: 10px; color: #333; }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chip { padding: 7px 12px; border-radius: 999px; border: 1px solid #d2d2d7; background: #fff; font-size: 13px; cursor: pointer; }
+    .chip.active { background: #ff7a00; color: #fff; border-color: #ff7a00; font-weight: 600; }
+    .outfit-box { background: #fff7ef; border: 1px solid #ffd5ad; border-radius: 14px; padding: 14px; margin-top: 8px; }
+    .outfit-item { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px dashed #ffd5ad; }
+    .outfit-item:last-child { border-bottom: none; }
+    .outfit-item img { width: 48px; height: 48px; object-fit: cover; border-radius: 8px; background: #eee; }
+    .btn { width: 100%; padding: 12px; border: none; border-radius: 12px; font-size: 14px; font-weight: 700; cursor: pointer; margin-top: 8px; }
+    .btn-primary { background: #ff7a00; color: #fff; }
+    .btn-secondary { background: #e8e8ed; color: #1d1d1f; }
+    .wardrobe-item { display: flex; align-items: center; justify-content: space-between; padding: 10px; background: #fff; border: 1px solid #ececef; border-radius: 12px; margin-bottom: 8px; }
+    .wardrobe-left { display: flex; align-items: center; gap: 10px; }
+    .wardrobe-left img { width: 46px; height: 46px; object-fit: cover; border-radius: 8px; background: #f2f2f7; }
+    .badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: #f2f2f7; color: #555; }
+    .nav { position: fixed; bottom: 0; width: 100%; max-width: 440px; background: #fff; border-top: 1px solid #e5e5ea; display: flex; }
+    .nav button { flex: 1; padding: 12px 6px; border: none; background: transparent; font-size: 13px; font-weight: 600; color: #6e6e73; cursor: pointer; }
+    .nav button.active { color: #ff7a00; }
+    input, select { width: 100%; padding: 10px; border-radius: 10px; border: 1px solid #d2d2d7; margin-bottom: 10px; font-size: 14px; }
+    .msg { font-size: 13px; color: #555; line-height: 1.5; margin-top: 8px; }
+    .preview-img { width: 100%; max-height: 220px; object-fit: cover; border-radius: 12px; margin-top: 8px; }
+  </style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <span>今日の服決めるアプリ</span>
+    <span id="historyCount" style="font-size:12px; font-weight:500;">着用: 0回</span>
+  </header>
+  <div class="content" id="view"></div>
+  <nav class="nav">
+    <button id="tabToday" class="active" onclick="switchTab('today')">今日の提案</button>
+    <button id="tabCloset" onclick="switchTab('closet')">クローゼット</button>
+    <button id="tabAdd" onclick="switchTab('add')">服を追加</button>
+  </nav>
+</div>
+
+<script>
+const STORAGE_KEY = "outfit_app_items_v1";
+const HISTORY_KEY = "outfit_app_history_v1";
+
+const DEFAULT_ITEMS = [
+  { id: 1, name: "白クルーネックTシャツ", category: "トップス", temp: "暑い", skeleton: ["ストレート", "ナチュラル"], lastWorn: 10, photo: "" },
+  { id: 2, name: "とろみブラウス", category: "トップス", temp: "ちょうどいい", skeleton: ["ウェーブ"], lastWorn: 7, photo: "" },
+  { id: 3, name: "厚手スウェット", category: "トップス", temp: "寒い", skeleton: ["ナチュラル", "ストレート"], lastWorn: 14, photo: "" },
+  { id: 4, name: "センタープレスパンツ", category: "ボトムス", temp: "ちょうどいい", skeleton: ["ストレート"], lastWorn: 9, photo: "" },
+  { id: 5, name: "フレアスカート", category: "ボトムス", temp: "ちょうどいい", skeleton: ["ウェーブ"], lastWorn: 12, photo: "" },
+  { id: 6, name: "ワイドチノパン", category: "ボトムス", temp: "暑い", skeleton: ["ナチュラル"], lastWorn: 5, photo: "" },
+  { id: 7, name: "撥水マウンテンパーカー", category: "アウター", temp: "寒い", skeleton: ["ナチュラル", "ストレート"], lastWorn: 8, photo: "" },
+  { id: 8, name: "ショート丈カーディガン", category: "アウター", temp: "ちょうどいい", skeleton: ["ウェーブ"], lastWorn: 6, photo: "" }
+];
+
+let state = {
+  tab: "today",
+  skeleton: "ストレート",
+  weather: "晴れ",
+  temp: 20,
+  items: loadItems(),
+  history: loadHistory(),
+  currentOutfit: null,
+  draftPhoto: ""
+};
+
+function loadItems() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : DEFAULT_ITEMS;
+  } catch { return DEFAULT_ITEMS; }
+}
+
+function loadHistory() {
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
+function saveData() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state.items));
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(state.history));
+  document.getElementById("historyCount").textContent = `着用: ${state.history.length}回`;
+}
+
+function getTempBand(temp) {
+  if (temp >= 24) return "暑い";
+  if (temp <= 14) return "寒い";
+  return "ちょうどいい";
+}
+
+function scoreItem(item) {
+  const band = getTempBand(state.temp);
+  let score = item.lastWorn || 1;
+  if (item.temp === band) score += 20;
+  if (item.skeleton && item.skeleton.includes(state.skeleton)) score += 15;
+  if (state.weather === "雨" && item.name.includes("撥水")) score += 25;
+  score += Math.random() * 8;
+  return score;
+}
+
+function pickOutfit() {
+  const tops = state.items.filter(i => i.category === "トップス").sort((a, b) => scoreItem(b) - scoreItem(a));
+  const bottoms = state.items.filter(i => i.category === "ボトムス").sort((a, b) => scoreItem(b) - scoreItem(a));
+  const outers = state.items.filter(i => i.category === "アウター").sort((a, b) => scoreItem(b) - scoreItem(a));
+  const picked = [tops[0], bottoms[0]];
+  if (state.temp <= 17 || state.weather === "雨") {
+    if (outers[0]) picked.push(outers[0]);
+  }
+  state.currentOutfit = picked.filter(Boolean);
+}
+
+function confirmOutfit() {
+  if (!state.currentOutfit || !state.currentOutfit.length) return;
+  const ids = state.currentOutfit.map(i => i.id);
+  state.items = state.items.map(item =>
+    ids.includes(item.id)
+      ? { ...item, lastWorn: 0 }
+      : { ...item, lastWorn: (item.lastWorn || 0) + 1 }
+  );
+  state.history.unshift({ date: new Date().toLocaleString("ja-JP"), names: state.currentOutfit.map(i => i.name) });
+  saveData();
+  pickOutfit();
+  render();
+  alert("今日のコーデを記録したよ！次からはマンネリ防止で別の服も選ばれやすくなるよ。");
+}
+
+function handlePhotoInput(e) {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      const maxW = 480;
+      const scale = Math.min(1, maxW / img.width);
+      canvas.width = img.width * scale;
+      canvas.height = img.height * scale;
+      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+      state.draftPhoto = canvas.toDataURL("image/jpeg", 0.75);
+      render();
+    };
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function addItem() {
+  const name = document.getElementById("itemName").value.trim();
+  const category = document.getElementById("itemCategory").value;
+  const temp = document.getElementById("itemTemp").value;
+  const skeleton = document.getElementById("itemSkeleton").value;
+  if (!name) return alert("服の名前を入力してね！");
+  const newItem = {
+    id: Date.now(),
+    name,
+    category,
+    temp,
+    skeleton: [skeleton],
+    lastWorn: 14,
+    photo: state.draftPhoto
+  };
+  state.items.unshift(newItem);
+  state.draftPhoto = "";
+  saveData();
+  switchTab("closet");
+}
+
+function switchTab(tab) {
+  state.tab = tab;
+  document.querySelectorAll(".nav button").forEach(b => b.classList.remove("active"));
+  if (tab === "today") document.getElementById("tabToday").classList.add("active");
+  if (tab === "closet") document.getElementById("tabCloset").classList.add("active");
+  if (tab === "add") document.getElementById("tabAdd").classList.add("active");
+  render();
+}
+
+function renderToday() {
+  if (!state.currentOutfit) pickOutfit();
+  const tips = {
+    "ストレート": "Iラインやジャストサイズ、ハリのある素材がすっきり映えるよ。",
+    "ウェーブ": "ハイウエストや短め丈、柔らかい素材で重心を上げるとバランス◎",
+    "ナチュラル": "ラフなシルエットや天然素材、ゆとりのある丈感が似合うよ。"
+  };
+  return `
+    <div class="card">
+      <div class="card-title">骨格タイプ</div>
+      <div class="chips">
+        ${["ストレート", "ウェーブ", "ナチュラル"].map(s =>
+          `<button class="chip ${state.skeleton === s ? "active" : ""}" onclick="state.skeleton='${s}'; pickOutfit(); render();">${s}</button>`
+        ).join("")}
+      </div>
+      <div class="msg">${tips[state.skeleton]}</div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">天気と気温（${state.weather} / ${state.temp}℃・${getTempBand(state.temp)}）</div>
+      <div class="chips" style="margin-bottom:10px;">
+        ${["晴れ", "くもり", "雨"].map(w =>
+          `<button class="chip ${state.weather === w ? "active" : ""}" onclick="state.weather='${w}'; pickOutfit(); render();">${w}</button>`
+        ).join("")}
+      </div>
+      <input type="range" min="5" max="34" value="${state.temp}" oninput="state.temp=Number(this.value); pickOutfit(); render();" />
+    </div>
+
+    <div class="card">
+      <div class="card-title">今日の提案コーデ</div>
+      <div class="outfit-box">
+        ${state.currentOutfit.map(item => `
+          <div class="outfit-item">
+            <img src="${item.photo || 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2248%22 height=%2248%22><rect width=%2248%22 height=%2248%22 fill=%22%23ffe4c4%22/></svg>'}" alt="" />
+            <div>
+              <div style="font-weight:700; font-size:14px;">${item.name}</div>
+              <div style="font-size:12px; color:#666;">${item.category} ・ ${item.lastWorn}日ぶり</div>
+            </div>
+          </div>
+        `).join("")}
+      </div>
+      <button class="btn btn-primary" onclick="confirmOutfit()">これにする！（着用記録）</button>
+      <button class="btn btn-secondary" onclick="pickOutfit(); render();">別の組み合わせを提案</button>
+    </div>
+  `;
+}
+
+function renderCloset() {
+  return `
+    <div class="card">
+      <div class="card-title">手持ちの服（${state.items.length}着）</div>
+      ${state.items.map(item => `
+        <div class="wardrobe-item">
+          <div class="wardrobe-left">
+            <img src="${item.photo || 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2246%22 height=%2246%22><rect width=%2246%22 height=%2246%22 fill=%22%23efeff4%22/></svg>'}" alt="" />
+            <div>
+              <div style="font-weight:700; font-size:14px;">${item.name}</div>
+              <div style="font-size:12px; color:#666;">${item.category} ・ ${item.temp} ・ ${item.lastWorn}日前</div>
+            </div>
+          </div>
+          <span class="badge">${(item.skeleton && item.skeleton[0]) || "共通"}</span>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderAdd() {
+  return `
+    <div class="card">
+      <div class="card-title">服を写真で追加</div>
+      <label style="font-size:12px; color:#555;">カメラ撮影 / 写真選択</label>
+      <input type="file" accept="image/*" capture="environment" onchange="handlePhotoInput(event)" />
+      ${state.draftPhoto ? `<img class="preview-img" src="${state.draftPhoto}" alt="プレビュー" />` : ""}
+      <label style="font-size:12px; color:#555;">アイテム名</label>
+      <input id="itemName" type="text" placeholder="例：ベージュのトレンチコート" />
+      <label style="font-size:12px; color:#555;">カテゴリ</label>
+      <select id="itemCategory">
+        <option>トップス</option>
+        <option>ボトムス</option>
+        <option>アウター</option>
+      </select>
+      <label style="font-size:12px; color:#555;">対応気温</label>
+      <select id="itemTemp">
+        <option>ちょうどいい</option>
+        <option>暑い</option>
+        <option>寒い</option>
+      </select>
+      <label style="font-size:12px; color:#555;">合いやすい骨格</label>
+      <select id="itemSkeleton">
+        <option>ストレート</option>
+        <option>ウェーブ</option>
+        <option>ナチュラル</option>
+      </select>
+      <button class="btn btn-primary" onclick="addItem()">クローゼットに登録する</button>
+    </div>
+  `;
+}
+
+function render() {
+  saveData();
+  const view = document.getElementById("view");
+  if (state.tab === "today") view.innerHTML = renderToday();
+  else if (state.tab === "closet") view.innerHTML = renderCloset();
+  else view.innerHTML = renderAdd();
+}
+
+render();
+</script>
+</body>
+</html>
